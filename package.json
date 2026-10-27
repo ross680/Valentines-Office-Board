@@ -1,0 +1,10 @@
+{
+  "name": "valentines-office-board",
+  "private": true,
+  "scripts": {
+    "test": "node tests/board.test.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "24.31.0"
+  }
+}
