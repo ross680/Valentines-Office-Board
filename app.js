@@ -34,7 +34,7 @@
   const pauseBtn = document.getElementById("pause");
   const soundBtn = document.getElementById("sound");
 
-  // vl_ keys stay off the Thanksgiving (tg_), Christmas, and year-round holiday
+  // vl_ keys stay off the Thanksgiving, Christmas, and year-round holiday
   // boards. Those sites share this github.io origin.
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
