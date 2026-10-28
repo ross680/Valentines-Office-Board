@@ -4,13 +4,13 @@
 // when the network is down. ?v= is part of the clip URL, so a new hash is a
 // new entry. The bust/date query on the page is not part of the cache key.
 // Cache names are origin-wide on github.io. Only this board's buckets are deleted.
-var CACHE = "valentines-board-v1";
+var CACHE = "valentines-board-v2";
 var SHELL = [
   "./",
   "./index.html",
-  "./playlist.js?v=20261027a",
-  "./styles.css?v=20261027a",
-  "./app.js?v=20261027a"
+  "./playlist.js?v=20261028a",
+  "./styles.css?v=20261028a",
+  "./app.js?v=20261028a"
 ];
 
 function stableRequest(request) {

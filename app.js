@@ -2,9 +2,9 @@
   // Office TV board for Valentine's Day. One <video> plays playlist.js.
   // One off-document warmer preloads the next file and is aborted (src cleared,
   // load()) before it is reused. Listeners and timers are created once.
-  // A stuck or broken clip is skipped. The countdown is resolved on load
-  // (including the 4-hour reload) and again each minute, so midnight
-  // America/New_York updates the chip.
+  // A stuck or broken clip is skipped. The countdown is derived from the
+  // Eastern clock on the single playback interval (and again on the 4-hour
+  // reload), so it ticks without a second timer and does not drift.
   const params = new URLSearchParams(location.search);
   const schedule = window.ValentineBoard;
 
@@ -77,12 +77,12 @@
   let armTimer = 0;
   let failTimer = 0;
   let idleTimer = 0;
-  let countdownTimer = 0;
   let cacheAsked = false;
   const booted = Date.now();
   const reloadAt = reloadHours > 0 ? booted + reloadHours * HOUR_MS : 0;
   const hardAt = reloadAt ? reloadAt + HARD_EXTRA_MS : 0;
   let lastMessage = null;
+  let lastMode = "";
 
   function clock() {
     try {
@@ -108,7 +108,9 @@
     return parts[parts.length - 1] || src || "clip";
   }
 
-  function activeParts() {
+  // A ?date= or __parts hook freezes the preview at midnight Eastern on that
+  // calendar day. The office TVs do not set either, so they follow the clock.
+  function dateOverride() {
     try {
       if (typeof window.__parts === "function") {
         const hooked = window.__parts();
@@ -120,24 +122,42 @@
       const parsed = schedule.parseISODate(raw);
       if (parsed) return parsed;
     }
-    return schedule.partsInTimeZone(nowDate(), schedule.timeZone);
+    return null;
   }
 
   function currentResolved() {
     if (!schedule) {
-      return { mode: "empty", days: 0, message: "", clips: [] };
+      return { mode: "empty", days: 0, hours: 0, minutes: 0, seconds: 0, message: "", clips: [] };
     }
-    return schedule.resolve(activeParts());
+    const override = dateOverride();
+    if (override) return schedule.resolve(override);
+    return schedule.countdownFromDate(nowDate());
   }
 
   function paintChip(resolved) {
     const next = resolved || currentResolved();
     const text = next && next.message ? next.message : "";
+    const mode = next && next.mode ? next.mode : "";
     if (text !== lastMessage) {
       lastMessage = text;
-      countdown.textContent = text;
+      const nl = text.indexOf("\n");
+      const line1 = nl === -1 ? text : text.slice(0, nl);
+      const line2 = nl === -1 ? "" : text.slice(nl + 1);
+      const main = countdown.querySelector(".cd-main");
+      const sub = countdown.querySelector(".cd-sub");
+      if (main && sub) {
+        main.textContent = line1;
+        sub.textContent = line2;
+      } else {
+        countdown.textContent = text;
+      }
     }
-    countdown.hidden = !text;
+    if (mode !== lastMode) {
+      lastMode = mode;
+      countdown.classList.toggle("day", mode === "day");
+    }
+    const hide = !text;
+    if (countdown.hidden !== hide) countdown.hidden = hide;
   }
 
   function publish() {
@@ -148,7 +168,10 @@
       src: clips.length ? clips[index] : "",
       mode: resolved.mode,
       days: resolved.days,
-      message: countdown.hidden ? "" : countdown.textContent,
+      hours: resolved.hours || 0,
+      minutes: resolved.minutes || 0,
+      seconds: resolved.seconds || 0,
+      message: countdown.hidden ? "" : (lastMessage || ""),
       paused: paused,
       failures: failures,
       preload: preloaded,
@@ -518,6 +541,9 @@
 
   function tick() {
     if (reloading) return;
+    const prevMessage = lastMessage;
+    paintChip();
+    if (lastMessage !== prevMessage) publish();
     if (hardAt && clock() >= hardAt) {
       safeReload("hard");
       return;
@@ -593,26 +619,14 @@
     return 0;
   }
 
-  // Called on load and once a minute. The playlist does not change; the chip does.
+  // Repaint from the clock. The playback interval calls the same paint.
   function recheck() {
     window.__rechecks = (window.__rechecks || 0) + 1;
     paintChip(currentResolved());
     publish();
   }
 
-  // Once a minute, just after the clock minute, so midnight America/New_York
-  // updates the chip on that tick instead of waiting for the 4-hour reload.
-  function recheckDelay(now) {
-    return 60000 - (now % 60000) + 40;
-  }
-
-  function scheduleRecheck() {
-    recheck();
-    countdownTimer = setTimeout(scheduleRecheck, recheckDelay(Date.now()));
-  }
-
   window.__recheck = recheck;
-  window.__recheckDelay = recheckDelay;
   window.__tick = tick;
 
   function boot() {
@@ -623,7 +637,7 @@
     }
     const resolved = currentResolved();
     installPlaylist(resolved, store.get("vl_last") || "");
-    scheduleRecheck();
+    recheck();
     wake();
     document.addEventListener("visibilitychange", onVisible);
     setInterval(tick, 500);

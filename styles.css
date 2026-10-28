@@ -4,15 +4,22 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color-
 body{font-family:Arial,Helvetica,sans-serif;color:var(--cream)}
 #stage{position:fixed;inset:0;cursor:none;background:#000}
 #vid{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:contain;background:#000;opacity:1;filter:none;user-select:none;-webkit-user-drag:none}
-#countdown{position:absolute;left:20px;top:16px;z-index:5;padding:8px 12px;border:1px solid var(--gold);border-radius:6px;background:#1a0c0c;color:var(--cream);font-size:22px;line-height:1.15;font-weight:800;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;pointer-events:none;opacity:1;box-shadow:none;filter:none;backdrop-filter:none;animation:none;transition:none}
+#countdown{position:absolute;top:10px;right:12px;z-index:6;box-sizing:border-box;width:244px;height:52px;padding:5px 8px 4px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;border:1px solid var(--gold);border-radius:6px;background:#1a0c0c;color:var(--cream);font-size:22px;line-height:1.05;font-weight:800;letter-spacing:0;text-transform:uppercase;text-align:right;white-space:nowrap;pointer-events:none;opacity:1;box-shadow:none;filter:none;backdrop-filter:none;animation:none;transition:none;overflow:hidden}
 #countdown[hidden]{display:none}
-#counter{position:absolute;right:18px;top:14px;z-index:5;padding:7px 10px;border:1px solid var(--gold);border-radius:7px;background:#1a0c0c;color:var(--gold);font-size:13px;font-weight:700;letter-spacing:.08em;visibility:hidden}
+#countdown .cd-main{font-size:22px;font-weight:800;line-height:1.05;letter-spacing:0;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;max-width:100%}
+#countdown .cd-sub{margin-top:2px;font-size:11px;font-weight:700;line-height:1.1;letter-spacing:.06em;color:var(--gold);max-width:100%}
+#countdown.day .cd-main{font-size:15px;letter-spacing:0}
+#counter{position:absolute;right:12px;top:68px;z-index:5;padding:7px 10px;border:1px solid var(--gold);border-radius:7px;background:#1a0c0c;color:var(--gold);font-size:13px;font-weight:700;letter-spacing:.08em;visibility:hidden}
 #controls{position:absolute;left:0;right:0;bottom:24px;z-index:5;display:flex;justify-content:center;gap:8px;visibility:hidden}
 #controls button{width:44px;height:38px;border-radius:8px;border:1px solid var(--gold);background:#1a0c0c;color:var(--cream);font-size:17px;cursor:pointer;opacity:1;box-shadow:none}
 #stage.awake{cursor:default}
 #stage.awake #controls,#stage.awake #counter,#stage.empty #counter{visibility:visible}
 @media (max-width:700px){
-  #countdown{font-size:14px;padding:6px 8px;left:10px;top:10px}
+  #countdown{width:196px;height:44px;padding:4px 8px;right:8px;top:8px}
+  #countdown .cd-main{font-size:14px}
+  #countdown.day .cd-main{font-size:11px}
+  #countdown .cd-sub{font-size:9px;letter-spacing:.04em}
+  #counter{top:56px;right:8px}
   #controls{bottom:14px}
   #controls button{width:40px;height:36px}
 }

@@ -1,6 +1,6 @@
 # 3R Valentine's Office TV
 
-Static GitHub Pages board for the office TV. One playlist of ten silent 15-second clips plays all year. A small opaque countdown chip in the corner counts calendar days to Valentine's Day in America/New_York.
+Static GitHub Pages board for the office TV. One playlist of ten silent 15-second clips plays all year. A small opaque countdown chip in the top-right corner ticks down to Valentine's Day in America/New_York.
 
 The TV opens <https://ross680.github.io/Valentines-Office-Board/>.
 
@@ -10,14 +10,17 @@ Clips live in `clips/` as `vl01.mp4` through `vl10.mp4`. Those filenames stay pu
 
 ## Countdown
 
-The chip is a static label. It does not fade, animate, or sit on a translucent panel. The page background is black and the video uses `object-fit: contain`.
+The chip sits in the top-right corner, in a fixed 244×52 box, so it does not cover the headline panel on the left of each clip and does not change size as the digits tick. It does not fade, animate, or sit on a translucent panel. The page background is black and the video uses `object-fit: contain`.
 
-| America/New_York date | Chip |
+The target is the next Feb 14 at 12:00 AM America/New_York. Days, hours, minutes, and seconds are the real time remaining until that instant, including across daylight saving. The TV's own timezone is not used. One playback interval paints the chip. The text is replaced only when the second changes, and a reload reads the clock again, so the count does not drift and does not keep a timer of its own.
+
+| America/New_York time | Chip |
 | --- | --- |
-| Any day except Feb 14 | `N DAYS UNTIL VALENTINE'S DAY` (or `1 DAY UNTIL VALENTINE'S DAY`) |
-| Feb 14 | `HAPPY VALENTINE'S DAY!` |
+| Before Feb 14 12:00 AM | `Nd HHh MMm SSs` and `UNTIL VALENTINE'S DAY` |
+| Feb 14, the whole calendar day | `HAPPY VALENTINE'S DAY` and `FROM THE 3R FAMILY` |
+| After Feb 14 | The count rolls to Feb 14 of the next year |
 
-After Feb 14 the count aims at Feb 14 of the next year. The date is read when the page loads and again each minute, so midnight Eastern updates the chip without waiting out the 4-hour reload. `?date=YYYY-MM-DD` pretends today is that calendar day.
+`?date=YYYY-MM-DD` pretends it is midnight Eastern on that calendar day. The office TVs do not set it.
 
 ## Publish on GitHub Pages
 
@@ -35,7 +38,7 @@ Pages can take a minute after the push. The TV may keep the previous `index.html
 
 ## URL options
 
-- `?date=YYYY-MM-DD` pretends today is that America/New_York calendar day.
+- `?date=YYYY-MM-DD` pretends it is midnight America/New_York on that calendar day. The live board ignores this and follows the Eastern clock.
 - `?reload=4` reloads 4 hours after the page opened (the default), after the current clip ends. `?reload=0` turns that scheduled reload, and the 4 hour 15 minute fallback, off.
 - `?maxclip=60` is a hard cap per video, in seconds (default 60). A normal clip ends itself first.
 - `?stall=8` skips a clip when playback time has not moved for 8 seconds (the default). The same skip happens on a media error, or on abort, emptied, or stalled once that clip is actually stuck.
@@ -65,7 +68,7 @@ The ten clips are shuffled when the page starts and again when the cycle wraps. 
 2. Change the `?v=` text on that line (first 10 hex characters of the new SHA-256). Leave `?v=` alone when the bytes did not change, or the TV downloads the clip again for no reason.
 3. Commit and push to `main`.
 
-`app.js`, `styles.css`, and `playlist.js` are linked with `?v=20261027a`. Bump that text in `index.html` and the matching shell list in `sw.js` when you change those files so the TV does not keep an old copy.
+`app.js`, `styles.css`, and `playlist.js` are linked with `?v=20261028a`. Bump that text in `index.html` and the matching shell list in `sw.js` when you change those files so the TV does not keep an old copy.
 
 Saved resume state uses its own `vl_` keys so it does not collide with the other office boards on the same `github.io` origin. The service worker only deletes cache buckets named `valentines-board-*`.
 

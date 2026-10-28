@@ -19,23 +19,75 @@ function check(cond, message) {
   if (!cond) failures.push(message);
 }
 
-function days(from, to) {
-  const [y1, m1, d1] = from.split("-").map(Number);
-  const [y2, m2, d2] = to.split("-").map(Number);
-  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function formatCount(days, hours, minutes, seconds) {
+  return days + "d " + pad2(hours) + "h " + pad2(minutes) + "m " + pad2(seconds) + "s\nUNTIL VALENTINE'S DAY";
+}
+
+// Wall clock in America/New_York. Independent of playlist.js.
+function nyWall(utcMs) {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+  const bits = fmt.formatToParts(new Date(utcMs));
+  const grab = (type) => Number(bits.find((part) => part.type === type).value);
+  let h = grab("hour");
+  if (h === 24) h = 0;
+  return { y: grab("year"), m: grab("month"), d: grab("day"), h: h, mi: grab("minute"), s: grab("second") };
+}
+
+// Feb 14 00:00 America/New_York is 05:00 UTC. February is always Eastern Standard Time.
+function valentineUtc(year) {
+  return Date.UTC(year, 1, 14, 5, 0, 0);
+}
+
+function midnightUtc(y, m, d) {
+  for (const hour of [4, 5]) {
+    const utc = Date.UTC(y, m - 1, d, hour, 0, 0);
+    const wall = nyWall(utc);
+    if (wall.y === y && wall.m === m && wall.d === d && wall.h === 0 && wall.mi === 0 && wall.s === 0) return utc;
+  }
+  throw new Error("no Eastern midnight for " + y + "-" + m + "-" + d);
+}
+
+function independentAt(utcMs) {
+  const wall = nyWall(utcMs);
+  if (wall.m === 2 && wall.d === 14) {
+    return { mode: "day", days: 0, hours: 0, minutes: 0, seconds: 0, message: board.HAPPY };
+  }
+  let year = wall.y;
+  if (wall.m > 2 || (wall.m === 2 && wall.d > 14)) year += 1;
+  let diff = Math.floor((valentineUtc(year) - utcMs) / 1000);
+  if (diff < 0) diff = 0;
+  const days = Math.floor(diff / 86400);
+  const hours = Math.floor((diff % 86400) / 3600);
+  const minutes = Math.floor((diff % 3600) / 60);
+  const seconds = diff % 60;
+  return { mode: "countdown", days: days, hours: hours, minutes: minutes, seconds: seconds, message: formatCount(days, hours, minutes, seconds) };
 }
 
 function expectFor(date) {
   const parts = board.parseISODate(date);
-  const onDay = parts.m === 2 && parts.d === 14;
-  let targetYear = parts.y;
-  if (parts.m > 2 || (parts.m === 2 && parts.d > 14)) targetYear += 1;
-  const n = onDay ? 0 : days(date, targetYear + "-02-14");
-  return {
-    mode: onDay ? "day" : "countdown",
-    days: n,
-    message: board.messageFor(n)
-  };
+  return independentAt(midnightUtc(parts.y, parts.m, parts.d));
+}
+
+function sameCountdown(got, want, label) {
+  check(got.mode === want.mode, label + " mode " + got.mode);
+  check(got.days === want.days, label + " days " + got.days + " !== " + want.days);
+  check(got.hours === want.hours, label + " hours " + got.hours + " !== " + want.hours);
+  check(got.minutes === want.minutes, label + " minutes " + got.minutes + " !== " + want.minutes);
+  check(got.seconds === want.seconds, label + " seconds " + got.seconds + " !== " + want.seconds);
+  check(got.message === want.message, label + " message [" + got.message + "]");
 }
 
 const fixtures = [
@@ -68,10 +120,11 @@ function handChecked() {
   for (const date of Object.keys(want)) {
     check(board.daysUntil(...date.split("-").map(Number)) === want[date], date + " days " + board.daysUntil(...date.split("-").map(Number)));
   }
-  check(board.messageFor(0) === "HAPPY VALENTINE'S DAY!", "happy text");
-  check(board.messageFor(1) === "1 DAY UNTIL VALENTINE'S DAY", "one day text");
-  check(board.messageFor(7) === "7 DAYS UNTIL VALENTINE'S DAY", "seven day text");
-  check(board.messageFor(110) === "110 DAYS UNTIL VALENTINE'S DAY", "110 day text");
+  check(board.HAPPY === "HAPPY VALENTINE'S DAY\nFROM THE 3R FAMILY", "happy text");
+  check(board.messageFor(1, 0, 0, 0) === "1d 00h 00m 00s\nUNTIL VALENTINE'S DAY", "one day text");
+  check(board.messageFor(7, 0, 0, 0) === "7d 00h 00m 00s\nUNTIL VALENTINE'S DAY", "seven day text");
+  check(board.messageFor(0, 8, 30, 9) === "0d 08h 30m 09s\nUNTIL VALENTINE'S DAY", "partial day text");
+  check(board.messageFor(110, 1, 0, 0) === "110d 01h 00m 00s\nUNTIL VALENTINE'S DAY", "110 day text");
 }
 
 function scheduleTests() {
@@ -83,13 +136,12 @@ function scheduleTests() {
     const parts = board.parseISODate(date);
     const got = board.resolve(parts);
     const want = expectFor(date);
-    check(got.mode === want.mode, date + " mode " + got.mode);
-    check(got.days === want.days, date + " days " + got.days + " !== " + want.days);
-    check(got.message === want.message, date + " message [" + got.message + "]");
+    sameCountdown(got, want, date);
     check(got.clips.length === 10, date + " clips");
+    check(board.countdownFromDate(new Date(midnightUtc(parts.y, parts.m, parts.d))).message === want.message, date + " instant");
   }
 
-  // Every calendar day in a non-leap year and a leap year agrees with the fixture helper.
+  // Every calendar day in a non-leap year and a leap year matches the UTC countdown.
   for (const year of [2026, 2028]) {
     for (let month = 1; month <= 12; month++) {
       for (let day = 1; day <= 31; day++) {
@@ -98,10 +150,40 @@ function scheduleTests() {
         if (!parts) continue;
         const got = board.resolve(parts);
         const want = expectFor(iso);
-        check(got.message === want.message && got.days === want.days && got.mode === want.mode, "year sweep " + iso + " " + got.message);
+        check(got.message === want.message && got.days === want.days && got.hours === want.hours && got.mode === want.mode, "year sweep " + iso + " " + got.message);
       }
     }
   }
+
+  // Known UTC instants. These disagree with a clock that ignores Eastern time.
+  const instants = [
+    "2026-02-13T20:30:00Z",
+    "2026-02-14T04:30:00Z",
+    "2026-02-14T04:59:59Z",
+    "2026-02-14T05:00:00Z",
+    "2026-02-14T22:00:00Z",
+    "2026-02-15T04:59:59Z",
+    "2026-02-15T05:00:00Z",
+    "2026-07-04T03:30:00Z",
+    "2026-07-04T04:00:00Z",
+    "2026-10-27T04:00:00Z",
+    "2026-11-02T05:00:00Z",
+    "2026-12-31T05:00:00Z",
+    "2028-02-29T05:00:00Z",
+    "2028-03-01T05:00:00Z"
+  ];
+  for (const iso of instants) {
+    const utc = Date.parse(iso);
+    sameCountdown(board.countdownFromDate(new Date(utc)), independentAt(utc), iso);
+  }
+  const beforeMidnight = board.countdownFromDate(new Date("2026-02-14T04:30:00Z"));
+  check(beforeMidnight.mode === "countdown" && beforeMidnight.days === 0 && beforeMidnight.hours === 0 && beforeMidnight.minutes === 30 && beforeMidnight.seconds === 0, "30 min left " + beforeMidnight.message);
+  const onTheDay = board.countdownFromDate(new Date("2026-02-14T22:00:00Z"));
+  check(onTheDay.mode === "day" && onTheDay.message === board.HAPPY, "evening of Feb 14 stays the celebration");
+  const nextYear = board.countdownFromDate(new Date("2026-02-15T05:00:00Z"));
+  check(nextYear.mode === "countdown" && nextYear.days === 364 && nextYear.hours === 0, "rolls to next Feb 14 " + nextYear.message);
+  const summer = board.countdownFromDate(new Date("2026-10-27T04:00:00Z"));
+  check(summer.days === 110 && summer.hours === 1 && summer.minutes === 0 && summer.seconds === 0, "EDT midnight keeps the extra hour " + summer.message);
 
   check(board.parseISODate("2026-02-31") === null, "reject Feb 31");
   check(board.parseISODate("2026-02-29") === null, "reject non-leap Feb 29");
@@ -175,7 +257,9 @@ function scheduleTests() {
   check(version && html.includes("app.js?v=" + version), "app.js version");
   check(version && html.includes("playlist.js?v=" + version), "playlist version");
   check(version && sw.includes("styles.css?v=" + version) && sw.includes("app.js?v=" + version) && sw.includes("playlist.js?v=" + version), "sw shell version");
-  check(sw.includes('CACHE = "valentines-board-v1"'), "cache name");
+  check(sw.includes('CACHE = "valentines-board-v2"'), "cache name");
+  check((app.match(/setInterval\(/g) || []).length === 1, "single interval");
+  check(!app.includes("scheduleRecheck") && !app.includes("countdownTimer"), "no countdown timeout chain");
   check(sw.includes("valentines-board-"), "cache prefix");
   check(!sw.includes("holiday-board"), "sw does not use the holiday cache name");
   check(!app.includes("hol_") && !app.includes("tg_"), "no foreign storage keys");
@@ -322,13 +406,23 @@ async function browserTests(browser, base) {
           count: window.__board.count,
           hidden: chipEl.hidden,
           videos: window.__board.videos,
-          text: chipEl.textContent
+          hours: window.__board.hours,
+          minutes: window.__board.minutes,
+          seconds: window.__board.seconds,
+          text: (function () {
+            const main = chipEl.querySelector(".cd-main");
+            const sub = chipEl.querySelector(".cd-sub");
+            if (!main) return chipEl.textContent;
+            return sub && sub.textContent ? main.textContent + "\n" + sub.textContent : main.textContent;
+          })()
         };
       });
       const want = expectFor(date);
       report.dates += 1;
       check(got.mode === want.mode, "chrome " + date + " mode " + got.mode);
       check(got.days === want.days, "chrome " + date + " days " + got.days);
+      check(got.hours === want.hours, "chrome " + date + " hours " + got.hours);
+      check(got.minutes === 0 && got.seconds === 0, "chrome " + date + " frozen at midnight");
       check(got.message === want.message, "chrome " + date + " message [" + got.message + "]");
       check(got.text === want.message, "chrome " + date + " chip text");
       check(got.hidden === false, "chrome chip hidden " + date);
@@ -383,8 +477,28 @@ async function browserTests(browser, base) {
     check(css.debug === false, "debug overlay present");
     check(css.muted === true && css.playsInline === true, "muted playsinline");
 
-    const delay = await styled.page.evaluate(() => window.__recheckDelay(100000));
-    check(delay === 20040, "recheck delay " + delay);
+    const place = await styled.page.evaluate(() => {
+      const chip = document.getElementById("countdown");
+      const stage = document.getElementById("stage");
+      const box = chip.getBoundingClientRect();
+      const frame = stage.getBoundingClientRect();
+      const main = chip.querySelector(".cd-main");
+      const sub = chip.querySelector(".cd-sub");
+      return {
+        right: Math.round(frame.right - box.right),
+        top: Math.round(box.top - frame.top),
+        width: Math.round(box.width),
+        height: Math.round(box.height),
+        left: Math.round(box.left),
+        overflow: chip.scrollWidth > chip.clientWidth + 1 || (main && main.scrollWidth > chip.clientWidth + 1) || (sub && sub.scrollWidth > chip.clientWidth + 1)
+      };
+    });
+    check(place.right >= 8 && place.right <= 16, "chip right inset " + place.right);
+    check(place.top >= 6 && place.top <= 14, "chip top " + place.top);
+    check(place.width >= 200 && place.width <= 260, "chip width " + place.width);
+    check(place.height >= 44 && place.height <= 64, "chip height " + place.height);
+    check(place.left > 1400, "chip stays in the right corner " + place.left);
+    check(place.overflow === false, "chip text overflows");
 
     await styled.page.evaluate(() => {
       window.__parts = () => ({ y: 2026, m: 2, d: 14 });
@@ -397,24 +511,45 @@ async function browserTests(browser, base) {
       videos: document.querySelectorAll("video").length,
       rechecks: window.__rechecks
     }));
-    check(flipped.message === "HAPPY VALENTINE'S DAY!" && flipped.mode === "day" && flipped.days === 0, "midnight to Feb 14 " + JSON.stringify(flipped));
+    check(flipped.message === board.HAPPY && flipped.mode === "day" && flipped.days === 0, "midnight to Feb 14 " + JSON.stringify(flipped));
     check(flipped.videos === 1, "videos after recheck " + flipped.videos);
     check(flipped.rechecks >= 2, "rechecks " + flipped.rechecks);
+    const holidayFit = await styled.page.evaluate(() => {
+      const chip = document.getElementById("countdown");
+      const main = chip.querySelector(".cd-main");
+      const sub = chip.querySelector(".cd-sub");
+      const cs = getComputedStyle(chip);
+      const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      return { main: main.scrollWidth, sub: sub.scrollWidth, limit: chip.clientWidth - pad, text: main.textContent + " / " + sub.textContent };
+    });
+    check(holidayFit.main <= holidayFit.limit && holidayFit.sub <= holidayFit.limit, "holiday fits " + JSON.stringify(holidayFit));
 
     await styled.page.evaluate(() => {
       window.__parts = () => ({ y: 2026, m: 2, d: 15 });
       window.__recheck();
     });
     flipped = await styled.page.evaluate(() => window.__board);
-    check(flipped.mode === "countdown" && flipped.days === 364 && flipped.message === "364 DAYS UNTIL VALENTINE'S DAY", "Feb 15 chip " + flipped.message);
+    const feb15 = expectFor("2026-02-15");
+    check(flipped.mode === "countdown" && flipped.days === feb15.days && flipped.hours === feb15.hours && flipped.message === feb15.message, "Feb 15 chip " + flipped.message);
+    const longFit = await styled.page.evaluate(() => {
+      const chip = document.getElementById("countdown");
+      const main = chip.querySelector(".cd-main");
+      const sub = chip.querySelector(".cd-sub");
+      const cs = getComputedStyle(chip);
+      const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      return { main: main.scrollWidth, sub: sub.scrollWidth, limit: chip.clientWidth - pad, text: main.textContent + " / " + sub.textContent };
+    });
+    check(longFit.main <= longFit.limit && longFit.sub <= longFit.limit, "long countdown fits " + JSON.stringify(longFit));
 
     const badDate = await openPage("?date=2026-02-31");
     try {
       await badDate.page.waitForFunction(() => window.__board && window.__board.message, { timeout: 15000 });
-      const fell = await badDate.page.evaluate(() => window.__board.message);
-      const today = board.partsInTimeZone(new Date(), "America/New_York");
-      const iso = today.y + "-" + String(today.m).padStart(2, "0") + "-" + String(today.d).padStart(2, "0");
-      check(fell === expectFor(iso).message, "bad date falls back [" + fell + "] want [" + expectFor(iso).message + "]");
+      const fell = await badDate.page.evaluate(() => window.__board);
+      const snap = independentAt(Date.now());
+      const fellSec = fell.days * 86400 + fell.hours * 3600 + fell.minutes * 60 + fell.seconds;
+      const snapSec = snap.mode === "day" ? 0 : snap.days * 86400 + snap.hours * 3600 + snap.minutes * 60 + snap.seconds;
+      const fellLive = fell.mode === "day" ? 0 : fellSec;
+      check(fell.mode === snap.mode && Math.abs(fellLive - snapSec) <= 3, "bad date falls back [" + fell.message + "] want [" + snap.message + "]");
     } finally {
       await closePair(badDate);
     }
@@ -422,15 +557,58 @@ async function browserTests(browser, base) {
     await closePair(styled);
   }
 
+  const live = await openPage("", async (page) => {
+    await page.evaluateOnNewDocument(() => {
+      window.__clock = Date.parse("2026-02-14T04:30:00Z");
+      window.__now = () => new Date(window.__clock);
+      window.__intervals = 0;
+      const origInterval = window.setInterval;
+      window.setInterval = function () {
+        window.__intervals += 1;
+        return origInterval.apply(this, arguments);
+      };
+    });
+  });
+  try {
+    await live.page.waitForFunction(() => window.__board && window.__board.minutes === 30, { timeout: 15000 });
+    const first = await live.page.evaluate(() => window.__board);
+    const wantFirst = independentAt(Date.parse("2026-02-14T04:30:00Z"));
+    check(first.message === wantFirst.message && first.mode === "countdown" && first.seconds === 0, "live 30 min " + first.message);
+    const stepped = await live.page.evaluate(() => {
+      window.__clock += 1000;
+      window.__tick();
+      return window.__board;
+    });
+    check(stepped.minutes === 29 && stepped.seconds === 59 && stepped.days === 0 && stepped.hours === 0, "live tick " + stepped.message);
+    const holiday = await live.page.evaluate(() => {
+      window.__clock = Date.parse("2026-02-14T05:00:00Z");
+      window.__tick();
+      return window.__board.message;
+    });
+    check(holiday === board.HAPPY, "live midnight flips " + holiday);
+    const rolled = await live.page.evaluate(() => {
+      window.__clock = Date.parse("2026-02-15T05:00:00Z");
+      window.__tick();
+      return window.__board;
+    });
+    const wantRoll = independentAt(Date.parse("2026-02-15T05:00:00Z"));
+    check(rolled.message === wantRoll.message && rolled.days === 364 && rolled.hours === 0, "live next year " + rolled.message);
+    const intervals = await live.page.evaluate(() => window.__intervals);
+    check(intervals === 1, "one interval on the page " + intervals);
+  } finally {
+    await closePair(live);
+  }
+
   fs.mkdirSync(shots, { recursive: true });
   const countdownShot = path.join(shots, "valentines_countdown_chip.png");
   const dayShot = path.join(shots, "valentines_day.png");
   const shotCountdown = await openPage("?date=2026-02-07");
   try {
-    await shotCountdown.page.waitForFunction(() => {
+    const seven = expectFor("2026-02-07").message;
+    await shotCountdown.page.waitForFunction((msg) => {
       const vid = document.getElementById("vid");
-      return window.__board && window.__board.message === "7 DAYS UNTIL VALENTINE'S DAY" && vid.videoWidth > 100 && vid.currentTime > 0.2 && !vid.paused;
-    }, { timeout: 20000 });
+      return window.__board && window.__board.message === msg && vid.videoWidth > 100 && vid.currentTime > 0.2 && !vid.paused;
+    }, { timeout: 20000 }, seven);
     await shotCountdown.page.screenshot({ path: countdownShot });
     report.screenshots.push(countdownShot);
   } finally {
@@ -438,11 +616,14 @@ async function browserTests(browser, base) {
   }
   const shotDay = await openPage("?date=2026-02-14");
   try {
-    await shotDay.page.waitForFunction(() => {
+    await shotDay.page.waitForFunction((msg) => {
       const vid = document.getElementById("vid");
       const chipEl = document.getElementById("countdown");
-      return window.__board && chipEl.textContent === "HAPPY VALENTINE'S DAY!" && !chipEl.hidden && vid.videoWidth > 100 && vid.currentTime > 0.2;
-    }, { timeout: 20000 });
+      const main = chipEl.querySelector(".cd-main");
+      const sub = chipEl.querySelector(".cd-sub");
+      const text = main ? main.textContent + "\n" + sub.textContent : chipEl.textContent;
+      return window.__board && window.__board.message === msg && text === msg && !chipEl.hidden && vid.videoWidth > 100 && vid.currentTime > 0.2;
+    }, { timeout: 20000 }, board.HAPPY);
     await shotDay.page.screenshot({ path: dayShot });
     report.screenshots.push(dayShot);
   } finally {
@@ -480,7 +661,7 @@ async function browserTests(browser, base) {
     }));
     check(report.offline.offline === true, "offline flag");
     check(report.offline.width > 0, "offline frame");
-    check(report.offline.message === "4 DAYS UNTIL VALENTINE'S DAY", "offline chip " + report.offline.message);
+    check(report.offline.message === expectFor("2026-02-10").message, "offline chip " + report.offline.message);
   } finally {
     await closePair(offline);
   }
